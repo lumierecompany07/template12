@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
 <head>
+    <link rel="preconnect" href="https://raw.githubusercontent.com" crossorigin>
+    <link rel="dns-prefetch" href="https://images.unsplash.com">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
     <title id="pageTitle">Lumière • Senuri & Thevindu Wedding Invitation</title>
@@ -9421,7 +9423,7 @@ body.main-reveal #premiumRainLayer {
                         src="https://raw.githubusercontent.com/lumierecompany07/backpotos/main/xx1.png"
                         alt="Wedding decorative artwork"
                         class="xx1-full-visible mt-3 w-[60%] max-w-[260px] h-auto object-contain mx-auto drop-shadow-lg"
-                        loading="eager"
+                        loading="eager" decoding="async" fetchpriority="high"
                     >
                 </div>
             </div>
@@ -9651,7 +9653,7 @@ body.main-reveal #premiumRainLayer {
 <div id="lightboxModal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden items-center justify-center p-4" onclick="closeLightbox()">
         <div class="relative max-w-4xl w-full max-h-[90vh] flex items-center justify-center" onclick="event.stopPropagation()">
             <button onclick="closeLightbox()" class="absolute -top-10 right-0 text-white text-2xl font-bold p-2 cursor-pointer">×</button>
-            <img id="lightboxImg" src="" alt="Zoomed Photo" class="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl kandyan-border animate-fade-scale">
+            <img id="lightboxImg" alt="Zoomed Photo" class="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl kandyan-border animate-fade-scale">
         </div>
     </div>
 
@@ -9859,6 +9861,7 @@ body.main-reveal #premiumRainLayer {
             const opening = panel.classList.contains('translate-x-full');
             if (opening && typeof syncCustomizerFromVariables === 'function') syncCustomizerFromVariables();
             panel.classList.toggle('translate-x-full');
+            if(opening)panel.querySelectorAll('img[data-src]').forEach(img=>{img.src=img.dataset.src;img.removeAttribute('data-src')});
         }
 
         function openGuestModal() {
@@ -10346,7 +10349,7 @@ body.main-reveal #premiumRainLayer {
                         <button type="button" class="customizer-delete" onclick="deleteGalleryPhoto(${index})"><i class="fa-solid fa-trash"></i> Delete</button>
                     </div>
                     <div class="gallery-editor-row">
-                        <img class="gallery-editor-thumb" src="${escapeHtml(src)}" alt="Photo ${index + 1} preview">
+                        <img class="gallery-editor-thumb" decoding="async" loading="lazy" fetchpriority="low" ${document.getElementById('customizerPanel')?.classList.contains('translate-x-full') ? 'data-src' : 'src'}="${escapeHtml(src)}" alt="Photo ${index + 1} preview">
                         <div>
                             <label class="gallery-file-label"><i class="fa-solid fa-folder-open"></i> Browse / Replace from Device
                                 <input type="file" accept="image/*" class="hidden" onchange="replaceGalleryPhoto(${index}, this.files[0]); this.value=''">
