@@ -9133,6 +9133,52 @@ body.main-reveal #premiumRainLayer {
   }
 </style>
 
+
+<!-- LUMIÈRE FIX: early guest-mode privacy guard + high-density image rendering -->
+<script id="lumiere-guest-mode-bootstrap">
+(function () {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('to')) document.documentElement.classList.add('lumiere-guest-mode');
+  } catch (_) {}
+})();
+</script>
+<style id="lumiere-guest-mode-uhd-guard">
+  /* Guest links must never expose host/customizer controls, even for one frame. */
+  html.lumiere-guest-mode #hostControlsContainer,
+  html.lumiere-guest-mode #customizerPanel,
+  html.lumiere-guest-mode #guestModal,
+  body.lumiere-guest-mode #hostControlsContainer,
+  body.lumiere-guest-mode #customizerPanel,
+  body.lumiere-guest-mode #guestModal {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  /* Keep every existing box/card dimension unchanged; only improve raster presentation. */
+  img,
+  picture img,
+  .slide-img,
+  .moment-card img,
+  .gallery-editor-thumb,
+  .intro-art-image,
+  .xx1-full-visible {
+    image-rendering: auto;
+    -ms-interpolation-mode: bicubic;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+
+  /* The invitee identity is fixed by the personalized link; RSVP status/count remain editable. */
+  html.lumiere-guest-mode #rsvpGuestNameInput[readonly],
+  body.lumiere-guest-mode #rsvpGuestNameInput[readonly] {
+    cursor: default !important;
+    user-select: text;
+  }
+</style>
+
 </head>
 <body class="invitation-locked bg-[#FAF8F5] text-tropicalText antialiased selection:bg-customDarkRed selection:text-white">
     <div id="premiumRainLayer" aria-hidden="true">
@@ -9856,6 +9902,7 @@ body.main-reveal #premiumRainLayer {
         // Default itinerary is rendered after DEFAULT_ITINERARY is initialized below.
 
         function toggleCustomizer() {
+            if (typeof isLumiereGuestMode === 'function' && isLumiereGuestMode()) return;
             const panel = document.getElementById('customizerPanel');
             if (!panel) return;
             const opening = panel.classList.contains('translate-x-full');
@@ -9865,6 +9912,7 @@ body.main-reveal #premiumRainLayer {
         }
 
         function openGuestModal() {
+            if (typeof isLumiereGuestMode === 'function' && isLumiereGuestMode()) return;
             document.getElementById('guestModal').classList.remove('hidden');
             document.getElementById('guestModal').classList.add('flex');
         }
@@ -9875,12 +9923,38 @@ body.main-reveal #premiumRainLayer {
         }
 
         function generateGuestLink() {
-            const name = document.getElementById('guestNameInput').value.trim();
-            if(!name) return;
-            const baseUrl = window.location.href.split('?')[0];
-            const link = `${baseUrl}?to=${encodeURIComponent(name)}`;
-            document.getElementById('generatedLinkOutput').value = link;
-            document.getElementById('resultContainer').classList.remove('hidden');
+            const nameInput = document.getElementById('guestNameInput');
+            const name = nameInput ? nameInput.value.trim() : '';
+            if (!name) {
+                if (nameInput) nameInput.focus();
+                return;
+            }
+
+            let url;
+            try {
+                url = new URL(window.location.href);
+            } catch (_) {
+                url = new URL(String(window.location.href).split('?')[0]);
+            }
+            url.search = '';
+            url.hash = '';
+            url.searchParams.set('to', name);
+
+            // Bind the currently customized invitation to the guest URL itself.
+            // The hash is not sent to the web server, so it avoids request-URL limits
+            // while keeping a static single-HTML invitation portable across devices.
+            try {
+                if (typeof getTemplateVariablePayload === 'function' && typeof encodeGuestSnapshot === 'function') {
+                    const snapshot = getTemplateVariablePayload();
+                    const encoded = encodeGuestSnapshot(snapshot);
+                    if (encoded) url.hash = `iv=${encoded}`;
+                }
+            } catch (_) {}
+
+            const output = document.getElementById('generatedLinkOutput');
+            if (output) output.value = url.toString();
+            const result = document.getElementById('resultContainer');
+            if (result) result.classList.remove('hidden');
         }
 
         function copyGuestLink() {
@@ -9892,18 +9966,23 @@ body.main-reveal #premiumRainLayer {
             setTimeout(() => msg.classList.add('hidden'), 2000);
         }
 
-        // Parse URL params on load
+        // Parse guest mode safely on load. URLSearchParams already decodes the value.
         window.addEventListener('DOMContentLoaded', () => {
-            const params = new URLSearchParams(window.location.search);
-            const guest = params.get('to');
-            if(guest) {
-                const decodedGuest = decodeURIComponent(guest);
-                document.getElementById('introGuestName').innerText = decodedGuest;
-                document.getElementById('dynamicGuestName').innerText = decodedGuest;
-                const rsvpNameInput = document.getElementById('rsvpGuestNameInput');
-                if (rsvpNameInput) rsvpNameInput.value = decodedGuest;
-                const hc = document.getElementById('hostControlsContainer');
-                if (hc) hc.style.display = 'none';
+            let guest = '';
+            try { guest = new URLSearchParams(window.location.search).get('to') || ''; } catch (_) {}
+            if (guest) {
+                if (typeof enforceLumiereGuestMode === 'function') enforceLumiereGuestMode(guest);
+                else {
+                    const dynamicGuest = document.getElementById('dynamicGuestName');
+                    if (dynamicGuest) dynamicGuest.textContent = guest;
+                    const rsvpNameInput = document.getElementById('rsvpGuestNameInput');
+                    if (rsvpNameInput) {
+                        rsvpNameInput.value = guest;
+                        rsvpNameInput.readOnly = true;
+                    }
+                    const hc = document.getElementById('hostControlsContainer');
+                    if (hc) hc.style.setProperty('display', 'none', 'important');
+                }
             }
             const rsvpName = document.getElementById('rsvpGuestNameInput');
             if (rsvpName) {
@@ -10141,11 +10220,11 @@ body.main-reveal #premiumRainLayer {
         ];
 
         const DEFAULT_GALLERY = [
-            'https://images.unsplash.com/photo-1583939003579-730e3918a45a?auto=format&fit=crop&w=800&q=80',
-            'https://images.unsplash.com/photo-1610173827002-6138ec31751f?auto=format&fit=crop&w=600&q=80',
-            'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=600&q=80',
-            'https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=600&q=80',
-            'https://images.unsplash.com/photo-1520854221256-17451cc331bf?auto=format&fit=crop&w=600&q=80'
+            'https://images.unsplash.com/photo-1583939003579-730e3918a45a?auto=format&fit=crop&w=1800&q=95',
+            'https://images.unsplash.com/photo-1610173827002-6138ec31751f?auto=format&fit=crop&w=1800&q=95',
+            'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1800&q=95',
+            'https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=1800&q=95',
+            'https://images.unsplash.com/photo-1520854221256-17451cc331bf?auto=format&fit=crop&w=1800&q=95'
         ];
 
         let templateVariables = {
@@ -10164,6 +10243,126 @@ body.main-reveal #premiumRainLayer {
             gallery: [...DEFAULT_GALLERY],
             itinerary: DEFAULT_ITINERARY.map(item => ({ ...item }))
         };
+
+
+        const LUMIERE_HOST_STATE_KEY = 'lumiere:wedding-template:host-state:v3';
+
+        function isLumiereGuestMode() {
+            try { return new URLSearchParams(window.location.search).has('to'); }
+            catch (_) { return false; }
+        }
+
+        function encodeGuestSnapshot(payload) {
+            try {
+                const json = JSON.stringify(payload || {});
+                const bytes = new TextEncoder().encode(json);
+                let binary = '';
+                const step = 0x8000;
+                for (let i = 0; i < bytes.length; i += step) {
+                    binary += String.fromCharCode(...bytes.subarray(i, i + step));
+                }
+                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+            } catch (_) { return ''; }
+        }
+
+        function decodeGuestSnapshot(encoded) {
+            try {
+                if (!encoded) return null;
+                let base64 = String(encoded).replace(/-/g, '+').replace(/_/g, '/');
+                base64 += '='.repeat((4 - base64.length % 4) % 4);
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                return JSON.parse(new TextDecoder().decode(bytes));
+            } catch (_) { return null; }
+        }
+
+        function readGuestSnapshotFromLocation() {
+            try {
+                const rawHash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+                const hashParams = new URLSearchParams(rawHash);
+                return decodeGuestSnapshot(hashParams.get('iv'));
+            } catch (_) { return null; }
+        }
+
+        function mergeTemplateState(data) {
+            if (!data || typeof data !== 'object') return false;
+            const scalarKeys = ['bride','brideParents','groom','groomParents','date','time','venue','address','map','tableNumber','seatNumber'];
+            scalarKeys.forEach(key => {
+                if (data[key] !== undefined && data[key] !== null) templateVariables[key] = data[key];
+            });
+            if (Array.isArray(data.story)) templateVariables.story = data.story.map(item => ({ ...item }));
+            if (Array.isArray(data.itinerary)) templateVariables.itinerary = data.itinerary.map(item => ({ ...item }));
+            if (Array.isArray(data.gallerySlots)) {
+                templateVariables.gallerySlots = data.gallerySlots.map(slot => Array.isArray(slot) ? [...slot] : (slot ? [slot] : []));
+                templateVariables.gallery = templateVariables.gallerySlots.map(slot => slot[0]).filter(Boolean);
+            } else if (Array.isArray(data.gallery)) {
+                templateVariables.gallerySlots = null;
+                templateVariables.gallery = [...data.gallery];
+            }
+            return true;
+        }
+
+        function saveHostTemplateState() {
+            if (isLumiereGuestMode()) return;
+            try {
+                const payload = getTemplateVariablePayload();
+                localStorage.setItem(LUMIERE_HOST_STATE_KEY, JSON.stringify(payload));
+            } catch (_) {
+                // Large device photos can exceed browser storage quota. The page still
+                // remains live and the parent dashboard receives the full update below.
+            }
+        }
+
+        function restoreHostTemplateState() {
+            if (isLumiereGuestMode()) return false;
+            try {
+                const raw = localStorage.getItem(LUMIERE_HOST_STATE_KEY);
+                if (!raw) return false;
+                return mergeTemplateState(JSON.parse(raw));
+            } catch (_) { return false; }
+        }
+
+        function enforceLumiereGuestMode(guestName = '') {
+            if (!isLumiereGuestMode()) return;
+            document.documentElement.classList.add('lumiere-guest-mode');
+            if (document.body) document.body.classList.add('lumiere-guest-mode');
+
+            const cleanGuest = String(guestName || '').trim();
+            const dynamicGuest = document.getElementById('dynamicGuestName');
+            if (dynamicGuest && cleanGuest) dynamicGuest.textContent = cleanGuest;
+            const introGuest = document.getElementById('introGuestName');
+            if (introGuest && cleanGuest) introGuest.textContent = cleanGuest;
+
+            const rsvpName = document.getElementById('rsvpGuestNameInput');
+            if (rsvpName && cleanGuest) {
+                rsvpName.value = cleanGuest;
+                rsvpName.readOnly = true;
+                rsvpName.setAttribute('aria-readonly', 'true');
+            }
+
+            ['hostControlsContainer','customizerPanel','guestModal'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+                el.setAttribute('aria-hidden', 'true');
+            });
+
+            // Defense-in-depth: even if another script tries to reopen host tools,
+            // every editor control stays disabled in guest mode.
+            document.querySelectorAll('#customizerPanel input, #customizerPanel textarea, #customizerPanel button, #customizerPanel select, #guestModal input, #guestModal button').forEach(el => {
+                try { el.disabled = true; } catch (_) {}
+                el.tabIndex = -1;
+            });
+        }
+
+        // Restore the saved host state for the owner, or the exact snapshot carried
+        // by a personalized guest URL. Guest snapshot always wins over local host state.
+        const __lumiereGuestSnapshot = isLumiereGuestMode() ? readGuestSnapshotFromLocation() : null;
+        if (__lumiereGuestSnapshot) mergeTemplateState(__lumiereGuestSnapshot);
+        else restoreHostTemplateState();
 
         function escapeHtml(value) {
             return String(value ?? '')
@@ -10368,6 +10567,7 @@ body.main-reveal #premiumRainLayer {
             if (index < 0 || index >= templateVariables.gallery.length) return;
             const clean = String(value || '').trim();
             if (!clean) return;
+            templateVariables.gallerySlots = null;
             templateVariables.gallery[index] = clean;
             renderMomentsGallery(templateVariables.gallery);
             renderGalleryEditor();
@@ -10396,7 +10596,7 @@ body.main-reveal #premiumRainLayer {
                 const image = new Image();
                 image.onload = () => {
                     try {
-                        const maxSide = 1800;
+                        const maxSide = 2048;
                         const naturalW = image.naturalWidth || image.width;
                         const naturalH = image.naturalHeight || image.height;
                         const scale = Math.min(1, maxSide / Math.max(naturalW, naturalH));
@@ -10411,7 +10611,7 @@ body.main-reveal #premiumRainLayer {
                         ctx.imageSmoothingQuality = 'high';
                         ctx.drawImage(image, 0, 0, width, height);
                         // WebP keeps quality high while reducing large phone-photo payloads.
-                        const optimized = canvas.toDataURL('image/webp', .84);
+                        const optimized = canvas.toDataURL('image/webp', .90);
                         resolve(optimized && optimized.length > 30 ? optimized : original);
                     } catch (err) {
                         resolve(original);
@@ -10426,6 +10626,7 @@ body.main-reveal #premiumRainLayer {
             if (!file) return;
             try {
                 setGalleryUploadStatus('Preparing photo…');
+                templateVariables.gallerySlots = null;
                 templateVariables.gallery[index] = await optimizeDeviceImage(file);
                 renderMomentsGallery(templateVariables.gallery);
                 renderGalleryEditor();
@@ -10445,6 +10646,7 @@ body.main-reveal #premiumRainLayer {
                 setGalleryUploadStatus(`Preparing ${files.length} photo${files.length > 1 ? 's' : ''}…`);
                 const urls = [];
                 for (const file of files) urls.push(await optimizeDeviceImage(file));
+                templateVariables.gallerySlots = null;
                 templateVariables.gallery.push(...urls);
                 renderMomentsGallery(templateVariables.gallery);
                 renderGalleryEditor();
@@ -10455,6 +10657,7 @@ body.main-reveal #premiumRainLayer {
         }
 
         function deleteGalleryPhoto(index) {
+            templateVariables.gallerySlots = null;
             templateVariables.gallery.splice(index, 1);
             renderMomentsGallery(templateVariables.gallery);
             renderGalleryEditor();
@@ -10641,15 +10844,22 @@ body.main-reveal #premiumRainLayer {
                 seatNumber: templateVariables.seatNumber,
                 story: templateVariables.story.map(item => ({ ...item })),
                 gallery: [...templateVariables.gallery],
+                gallerySlots: Array.isArray(templateVariables.gallerySlots) ? templateVariables.gallerySlots.map(slot => Array.isArray(slot) ? [...slot] : []) : null,
                 itinerary: templateVariables.itinerary.map(item => ({ ...item }))
             };
         }
 
-        // Initial render from the centralized variables.
+        // Initial render from the centralized variables / saved shared snapshot.
         renderLoveStory(templateVariables.story);
-        renderMomentsGallery(templateVariables.gallery);
+        renderMomentsGallery(Array.isArray(templateVariables.gallerySlots) ? templateVariables.gallerySlots : templateVariables.gallery);
         renderItineraryList(templateVariables.itinerary);
         syncCustomizerFromVariables();
+        applyWeddingDetailsToPageFromState();
+        if (isLumiereGuestMode()) {
+            let initialGuest = '';
+            try { initialGuest = new URLSearchParams(window.location.search).get('to') || ''; } catch (_) {}
+            enforceLumiereGuestMode(initialGuest);
+        }
 
         function getOrdinalSuffix(day) {
             if (day > 3 && day < 21) return 'th';
@@ -10735,9 +10945,16 @@ body.main-reveal #premiumRainLayer {
                 const rsvpNameInput = document.getElementById('rsvpGuestNameInput');
                 if (rsvpNameInput && !rsvpNameInput.value) rsvpNameInput.value = data.guest;
             }
-            if (data.hideHostControls) {
+            if (data.hideHostControls || isLumiereGuestMode()) {
                 const hc = document.getElementById('hostControlsContainer');
-                if (hc) hc.style.display = 'none';
+                if (hc) hc.style.setProperty('display', 'none', 'important');
+            }
+            if (isLumiereGuestMode()) {
+                let guestName = data.guest || '';
+                if (!guestName) {
+                    try { guestName = new URLSearchParams(window.location.search).get('to') || ''; } catch (_) {}
+                }
+                enforceLumiereGuestMode(guestName);
             }
             if (data.rsvpStatus && data.rsvpStatus !== 'Pending') {
                 renderRsvpDoneState(data.rsvpStatus, data.rsvpGuestCount, data.rsvpGuestName || data.guest || '');
@@ -10755,11 +10972,13 @@ body.main-reveal #premiumRainLayer {
         }
 
         function applyCustomizations() {
+            if (isLumiereGuestMode()) return; // Guests may change RSVP only.
             applyWeddingDetailsFromCustomizer();
             renderLoveStory(templateVariables.story);
-            renderMomentsGallery(templateVariables.gallery);
+            renderMomentsGallery(Array.isArray(templateVariables.gallerySlots) ? templateVariables.gallerySlots : templateVariables.gallery);
             renderItineraryList(templateVariables.itinerary);
             syncCustomizerFromVariables();
+            saveHostTemplateState();
 
             // Structured variable payload for a parent dashboard / future persistence layer.
             try {
@@ -11399,6 +11618,25 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
     <div id="mainPageOutline" aria-hidden="true"></div>
+
+
+
+<style id="lumiere-guest-mode-final-guard">
+  html.lumiere-guest-mode #hostControlsContainer,
+  html.lumiere-guest-mode #customizerPanel,
+  html.lumiere-guest-mode #guestModal,
+  body.lumiere-guest-mode #hostControlsContainer,
+  body.lumiere-guest-mode #customizerPanel,
+  body.lumiere-guest-mode #guestModal,
+  body.lumiere-guest-mode.main-reveal #hostControlsContainer {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+</style>
 
 </body>
 </html>
